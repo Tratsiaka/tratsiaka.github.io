@@ -1,0 +1,31 @@
+* {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.widget__container {
+  width: 450px;
+  margin: 10% auto;
+}
+
+.widget__section {
+  margin: 0 auto;
+  width: 400px;
+}
+#crypted-field {
+  border: 1px solid lightgray;
+  width: 100%;
+  resize: vertical;
+}
+#decrypt {
+  width: 100%;
+}
+
+#decrypted-field {
+    word-wrap: break-word;
+    padding: 1em;
+
+}
+#speed-info{
+    padding: 5px 0;
+}
