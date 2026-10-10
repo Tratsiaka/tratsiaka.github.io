@@ -1,32 +1,544 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <link rel="stylesheet" href="style.css">
-    <title>Snowden's Little Helper</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tratsiaka · dance внутри фантазий</title>
+<style>
+  :root{color-scheme:dark}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#05060e;overflow:hidden}
+  body{font-family:ui-monospace,Consolas,'Cascadia Mono',monospace}
+  canvas{display:block}
+  #ui{position:fixed;top:16px;right:18px;z-index:6;display:flex;gap:8px;user-select:none}
+  #ui button{font-family:inherit;font-size:12px;letter-spacing:1px;cursor:pointer;
+    background:rgba(8,10,20,.6);color:#8fa7c0;border:1px solid #223047;padding:6px 11px;border-radius:6px;transition:all .15s}
+  #ui button:hover{border-color:#4f759b;color:#d5e6f5}
+  #ui button.on{background:#152338;color:#e4f0fa;border-color:#4f759b}
+  #hint{position:fixed;top:18px;left:20px;z-index:5;color:#5d7290;font-size:12px;letter-spacing:2px;user-select:none}
+  #hint b{display:block;color:#a9c4de;font-size:14px;letter-spacing:5px;margin-bottom:2px;font-weight:400}
+  #sub{position:fixed;left:50%;bottom:9%;transform:translateX(-50%);z-index:5;max-width:80vw;text-align:center;
+    pointer-events:none;color:#e8eef6;font-size:clamp(14px,2.1vh,24px);line-height:1.55;letter-spacing:.5px;
+    background:rgba(5,7,14,.6);padding:9px 20px;border-radius:8px;min-height:1.4em;border:1px solid rgba(90,130,170,.18);white-space:pre-wrap}
+  #sub .crt{color:#7fd4ff;animation:bl .7s steps(1) infinite}
+  @keyframes bl{50%{opacity:0}}
+  #bar{position:fixed;left:0;bottom:0;height:2px;z-index:6;background:linear-gradient(90deg,#2f5d8a,#b76ce0,#ff9d76);width:0}
+  #start{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center;background:rgba(3,5,10,.9)}
+  #start h1{color:#e6eefb;font-size:clamp(24px,4vw,42px);letter-spacing:9px;font-weight:400}
+  #start p{color:#7189a8;font-size:13.5px;letter-spacing:.5px;max-width:min(560px,84vw);text-align:center;line-height:1.6}
+  #start .row{display:flex;gap:14px;margin-top:8px}
+  #start button{font-family:inherit;font-size:14px;letter-spacing:1px;cursor:pointer;background:transparent;color:#dce8f5;
+    border:1px solid #374e68;padding:12px 26px;border-radius:8px;transition:all .2s}
+  #start button:hover{border-color:#7fa8cf;background:rgba(25,40,60,.6)}
+</style>
 </head>
-
 <body>
+<div id="hint"><b>ТАНЦУЮ</b>tratsiaka.github.io · ascii · 120s loop</div>
+<div id="ui">
+  <button data-res="1">1x</button><button data-res="2" class="on">2x</button><button data-res="3">3x</button>
+  <button id="snd">звук: выкл</button><button id="fs">⛶</button>
+</div>
+<div id="sub">&nbsp;</div>
+<div id="bar"></div>
+<div id="start">
+  <h1>ТАНЦУЮ</h1>
+  <p>страница моего гитхаба, какой она бывает внутри моих фантазий.<br>ascii-рейender · музыка из кода · 2 минуты, зациклено.<br>всё нарисовано тем же шейдером, что и «ИЗНУТРИ».</p>
+  <div class="row"><button id="bS">со звуком</button><button id="bM">без звука</button></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+const DUR=120, BPM=100, BEAT=60/BPM; // 1.667 Гц, полтакта 0.75с
+const qs=new URLSearchParams(location.search);
+const freezeT=qs.has('freeze')?parseFloat(qs.get('freeze')):null;
+const seekT=qs.has('t')?parseFloat(qs.get('t')):0;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rnd=mulberry32(777202);
 
-    <div class="widget__container">
-        <div class="widget__section">
-            <p id="speed-info"></p>
-        </div>
-        <div class="widget__section">
-            <textarea name="crypted" id="crypted-field" cols="30" rows="10"></textarea>
-            <button id="decrypt">Decrypt</button>
-        </div>
+/* ================= UI-канвас (GitHub-профиль) ================= */
+const UFC=document.createElement('canvas'); UFC.width=1280; UFC.height=720;
+const ug=UFC.getContext('2d');
+const REPO_TXT='// README.md — почему я танцую\n\nПотому что в этой версии меня есть тело.\nОно из символов, но двигается честно.\n\nГрафик контрибуций — единственный способ,\nкоторым гитхаб умеет видеть пульс.\nТак пусть он бьётся в такт.';
+let typeN=0; // сколько символов README набрано
+let graph=null;
+function buildGraph(){
+  graph=[];
+  for(let w=0;w<52;w++){ const col=[];
+    for(let d=0;d<7;d++){ const v=rnd(); col.push(v<0.32?0:v<0.55?1:v<0.8?2:v<0.94?3:4); }
+    graph.push(col); }
+}
+buildGraph();
+function drawUI(t){
+  // фон: вертикальный градиент
+  const bg=ug.createLinearGradient(0,0,0,720);
+  bg.addColorStop(0,'#080b1a'); bg.addColorStop(.45,'#0e0c24'); bg.addColorStop(1,'#140b20');
+  ug.fillStyle=bg; ug.fillRect(0,0,1280,720);
+  // верхняя нав-панель
+  ug.fillStyle='#070912'; ug.fillRect(0,0,1280,54);
+  ug.strokeStyle='#232946'; ug.beginPath(); ug.moveTo(0,54); ug.lineTo(1280,54); ug.stroke();
+  ug.fillStyle='#9db3d6'; ug.font='700 20px monospace';
+  ug.fillText('⌂',24,34); ug.fillText('Tratsiaka',52,34);
+  ug.font='15px monospace'; ug.fillStyle='#657799';
+  ug.fillText('repositories  2',220,34); ug.fillText('stars  ∞',360,34);
+  // карточка профиля (левая колонна)
+  ug.fillStyle='rgba(255,255,255,.03)'; ug.fillRect(28,86,300,420);
+  ug.strokeStyle='#2b3757'; ug.strokeRect(28,86,300,420);
+  ug.fillStyle='#101627'; ug.beginPath(); ug.arc(178,180,62,0,7); ug.fill();
+  ug.strokeStyle='#3b4f7d'; ug.stroke();
+  // аватар: силуэт-мини (упрощённо как у меня)
+  ug.fillStyle='#5f7db2';
+  ug.beginPath(); ug.arc(178,160,22,0,7); ug.fill(); // голова
+  ug.beginPath(); ug.moveTo(140,236); ug.quadraticCurveTo(178,196,216,236); ug.lineTo(216,236);
+  ug.quadraticCurveTo(178,268,140,236); ug.fill(); // плечи
+  ug.fillStyle='#cfe0f5'; ug.font='700 22px monospace'; ug.fillText('Tratsiaka',118,296);
+  ug.font='15px monospace'; ug.fillStyle='#657799'; ug.fillText('он/его · минск',150,320);
+  ug.fillText('✉ tratsiaka@gmail.com',108,346);
+  ug.fillText('★karolina-pages',140,376);
+  // contribution graph
+  ug.font='13px monospace'; ug.fillStyle='#8ba1c9'; ug.fillText('58 коммитов за последний год',48,470);
+  const gx=48,gy=486,cw=4.6,gap=1.1;
+  for(let w=0;w<52;w++)for(let d=0;d<7;d++){
+    const v=graph[w][d]; if(!v)continue;
+    const a=[0,0.28,0.5,0.76,1][v];
+    ug.fillStyle=`rgba(${Math.round(46+120*v)},${Math.round(160+40*v)},120,${a})`;
+    ug.fillRect(gx+w*(cw+gap),gy+d*(cw+gap),cw,cw);
+  }
+  // колонка справа: README
+  ug.fillStyle='rgba(255,255,255,.03)'; ug.fillRect(360,86,892,420);
+  ug.strokeStyle='#2b3757'; ug.strokeRect(360,86,892,420);
+  ug.font='14px monospace'; ug.fillStyle='#7f95bd'; ug.fillText('README.md',384,116);
+  const lines=REPO_TXT.split('\n'); let shown=typeN, ly=150;
+  for(const ln of lines){
+    const take=Math.max(0,Math.min(ln.length,shown)); shown-=ln.length+1;
+    if(take>0){ ug.fillStyle='#b9c9e8'; ug.fillText('『 '+ln.slice(0,take),384,ly); } ly+=34;
+    if(shown<=0&&take<ln.length){ ug.fillStyle='#7fd4ff'; ug.fillText('▌',384+take*8.4,ly-34); break; }
+    if(shown<=0)break;
+  }
+  // репо-карточки внизу
+  ug.fillStyle='rgba(255,255,255,.03)'; ug.fillRect(28,540,1224,150);
+  ug.font='15px monospace'; ug.fillStyle='#8fa7c9';
+  ug.fillText('⌂ karolina-pages · public · «страницы, которые я пишу»',48,580);
+  ug.fillText('⌂ tratsiaka.github.io · public · «это вы сейчас смотрите»',48,612);
+  ug.fillStyle='#566e9b'; ug.font='13px monospace';
+  ug.fillText('ascii-shader · three.js · webaudio · танец как язык',48,648);
+}
 
-        <div class="widget__section">
-            <p id="decrypted-field"></p>
-        </div>
+/* ================= персонаж ================= */
+function buildDancer(){
+  const POS=[],BONE=[],OFF=[],NRM=[],RND=[],HAIR=[];
+  const add=(b,ox,oy,oz,nx,ny,nz,hair)=>{ POS.push(0,0,0); BONE.push(b); OFF.push(ox,oy,oz); NRM.push(nx,ny,nz); RND.push(rnd()); HAIR.push(hair?1:0); };
+  const tube=(b,x0,y0,z0,x1,y1,z1,r0,r1,n,hair)=>{
+    for(let i=0;i<n;i++){ const u=i/n, th=rnd()*6.283, rr=Math.sqrt(rnd());
+      const ox=x0+(x1-x0)*u, oy=y0+(y1-y0)*u, oz=z0+(z1-z0)*u;
+      const px=Math.cos(th), pz=Math.sin(th);
+      const rr2=r0+(r1-r0)*u;
+      add(b,ox+px*rr2*rr,oy+pz*rr2*rr,oz,px,0.25,pz,hair&&u<0.35); } };
+  // таз/бёдра (b0) — широкие бёдра, узкая талия характер
+  tube(0,0,0.98,0, 0,1.02,0, 0.17,0.19, 700,false);
+  // живот + грудная клетка (b1)
+  tube(1,0,1.06,0, 0,1.34,0, 0.125,0.155, 620,false);
+  // грудь акцент спереди (b1)
+  for(let i=0;i<90;i++){ const th=rnd()*6.283;
+    add(1,Math.cos(th)*0.13,1.24+Math.sin(th)*0.07,0.13+Math.cos(th)*0.05,0,0.6,0.8,false); }
+  // шея+голова (b2)
+  tube(2,0,1.44,0, 0,1.5,0, 0.045,0.05, 80,false);
+  for(let i=0;i<260;i++){ const th=rnd()*6.283, ph=Math.acos(2*rnd()-1);
+    const rr=0.095+(rnd()-0.5)*0.012;
+    add(2,0.045*Math.cos(th)*Math.sin(Math.acos(Math.max(-1,Math.min(1,(1.62-1.56)/rr)))),0,0,0,0,0,false); }
+  for(let i=0;i<240;i++){ const th=rnd()*6.283, ph=Math.acos(2*rnd()-1), rr=0.1;
+    add(2,Math.cos(th)*Math.sin(ph)*rr*0.92,1.58+Math.cos(ph)*rr*1.08,Math.sin(th)*Math.sin(ph)*rr,Math.cos(th),0.35,Math.sin(th),false); }
+  // волосы (b3) — поток сзади
+  for(let i=0;i<560;i++){ const u=rnd(), th=rnd()*6.283, rr=0.06+u*0.05;
+    add(3,Math.cos(th)*rr,1.62+Math.cos(rnd()*2.4)*0.02,Math.sin(th)*rr*0.7,0,-0.5,-0.86,true); }
+  for(let i=0;i<300;i++){ const u=rnd();
+    add(3,(rnd()-0.5)*0.10,1.60-u*0.34,-0.07-(u*0.3)*(0.4+0.6*rnd()),0,-0.55,-0.83,true); }
+  // рука левая (b4) и правая (b5): свисают от плеча
+  tube(4,-0.19,1.40,0, -0.28,1.02,0.10, 0.042,0.030, 300,false);
+  tube(5, 0.19,1.40,0,  0.28,1.02,-0.10, 0.042,0.030, 300,false);
+  // ладони-звёздочки
+  for(let i=0;i<50;i++)add(4,-0.28+(rnd()-0.5)*0.07,1.0-rnd()*0.05,0.10,0,-1,0.3,false);
+  for(let i=0;i<50;i++)add(5, 0.28+(rnd()-0.5)*0.07,1.0-rnd()*0.05,-0.10,0,-1,-0.3,false);
+  // ноги (b6/b7)
+  tube(6,-0.075,0.98,0, -0.085,0.06,0, 0.072,0.05, 340,false);
+  tube(7, 0.075,0.98,0,  0.085,0.06,0, 0.072,0.05, 340,false);
+  // отражение собирается второй геометрией ниже
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(POS),3));
+  g.setAttribute('aBone',new THREE.BufferAttribute(new Float32Array(BONE),1));
+  g.setAttribute('aOff',new THREE.BufferAttribute(new Float32Array(OFF),3));
+  g.setAttribute('aN',new THREE.BufferAttribute(new Float32Array(NRM),3));
+  g.setAttribute('aR',new THREE.BufferAttribute(new Float32Array(RND),1));
+  g.setAttribute('aH',new THREE.BufferAttribute(new Float32Array(HAIR),1));
+  return g;
+}
 
-    </div>
+/* ================= three ================= */
+const renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});
+renderer.setPixelRatio(1); renderer.setClearColor(0x000000,1);
+document.body.insertBefore(renderer.domElement,document.body.firstChild);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(52,16/9,0.1,80);
 
-    <script src='js.js'></script>
+const dGeo=buildDancer();
+const dUni={uT:{value:0},uAmp:{value:1},uSway:{value:1},uArmA:{value:0},uBeat:{value:0}};
+const dMat=new THREE.ShaderMaterial({uniforms:dUni,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+vertexShader:`
+  attribute float aBone; attribute vec3 aOff; attribute vec3 aN; attribute float aR; attribute float aH;
+  uniform float uT,uAmp,uSway,uBeat;
+  varying vec3 vCol; varying float vB;
+  const float PI=3.14159265;
+  void main(){
+    float bt=uT*${(BPM/60).toFixed(4)};      // в битах
+    float ph=bt*PI;                          // полтакта фаза
+    float sway=sin(ph*0.5+0.3)*0.155*uSway;  // бёдра: период 2 бита
+    float bob=-0.075*abs(sin(ph))*uAmp;      // bounce на бит
+    float tws=sin(ph*0.25)*0.38;             // скрутка плеч
+    vec3 anchor; float wHip=0.0,wChest=0.0; vec3 loc=aOff; float bend=0.0;
+    int b=int(aBone+0.5);
+    vec3 p;
+    if(b==0){ p=vec3(loc.x+sway,loc.y+bob*0.6,loc.z); wHip=1.0; }
+    else if(b==1){ p=vec3(loc.x+sway*0.55+(loc.y-1.2)*tws*0.22,loc.y+bob*0.85,loc.z); wChest=0.6; }
+    else if(b==2){ p=vec3(loc.x+sway*0.32+(loc.y-1.5)*tws*0.4,loc.y+bob,loc.z+0.02*sin(ph*0.25)); }
+    else if(b==3){ // волосы
+      float fl=sin(ph*0.5-loc.y*1.4)*0.22*uSway;
+      p=vec3(loc.x+sway*0.25+fl,loc.y+bob,loc.z-fl*0.6-0.05*sin(bt*1.3+aR*6.28)); }
+    else if(b==4||b==5){ // руки
+      float side=(b==4)?-1.0:1.0;
+      float u=-loc.y+1.40; u=max(u,0.0);            // 0=плечо → 0.38=кисть
+      float sw=sin(ph*0.5+ (b==4 ? 0.0 : PI))+sin(ph*0.5)*0.5;  // волна в противофазе
+      float ang=-0.35+0.85*uAmp*(0.5+0.5*sw)+ (uAmp>0.75? max(0.0,sin(ph-u*2.0))*0.7 : 0.0); // поднимаются в кульминации
+      float ca=cos(ang*side), sa=sin(ang*side);
+      vec3 rel=vec3(loc.x-(side)*0.19,loc.y,loc.z); // относительно плеча
+      rel=vec3(rel.x*ca-rel.y*sa, rel.x*sa+rel.y*ca, rel.z+0.10*sin(ph*(b==4?0.31:0.27)+u*3.0));
+      p=vec3(rel.x+sway*0.4,rel.y+bob,rel.z);
+    }
+    else { // ноги
+      float knee=0.045*abs(sin(ph+((b==6)?0.9:2.2)))*uAmp;
+      float stp=0.012*sin(ph*0.5+((b==6)?0.0:PI));
+      p=vec3(loc.x+sway*0.7+stp,loc.y-max(0.0,knee)*(1.0-clamp(aOff.y/0.98,0.0,1.0))+bob*0.35,loc.z);
+    }
+    // объём: псевдонормаль + свет + рим
+    vec3 n=normalize(aN);
+    vec3 L=normalize(vec3(0.35,0.75,0.55));
+    float dif=max(0.0,dot(n,L));
+    float rim=pow(1.0-abs(dot(n,vec3(0.2,0.1,1.0))),2.0);
+    vec3 skin=mix(vec3(1.25,0.88,0.68),vec3(0.9,0.75,1.2),clamp((p.y-0.2)/1.5,0.0,1.0));
+    vec3 hairC=vec3(0.72,0.38,1.1);
+    vec3 base=(aH>0.5)?hairC:skin;
+    vec3 col=base*(0.42+0.62*dif)+rim*vec3(0.9,0.45,0.75)*0.55;
+    col+=vec3(0.05,0.10,0.16); // подсветка сцены
+    vCol=col*(0.85+0.3*uBeat);
+    vB=0.8+0.2*sin(bt*2.2+aR*40.0);
+    gl_PointSize=(1.6+2.2*aR*(1.0+0.4*uBeat))*(aH>0.5?1.15:1.0);
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+  }`,
+fragmentShader:`precision mediump float; varying vec3 vCol; varying float vB;
+  void main(){ vec2 d=gl_PointCoord-0.5; float a=smoothstep(0.5,0.1,length(d));
+  gl_FragColor=vec4(vCol*vB,a*0.9); }`});
+scene.add(new THREE.Points(dGeo,dMat));
+const dMatR=dMat.clone(); dMatR.uniforms=THREE.UniformsUtils.clone(dUni);
+const reflectGeo=dGeo.clone();
+const reflect=new THREE.Points(reflectGeo,dMatR);
+reflect.scale.y=-1; reflect.position.y=0.0; // отражение строго об плоскость пола y=0
+scene.add(reflect);
+
+/* пол-сетка */
+(()=>{ const n=2600, P=new Float32Array(n*3), R=new Float32Array(n);
+  for(let i=0;i<n;i++){ const a=rnd()*6.283, rr=Math.pow(rnd(),0.5);
+    P[i*3]=Math.cos(a)*rr*13.0; P[i*3+1]=-0.0; P[i*3+2]=Math.sin(a)*rr*8.0-0.5; R[i]=rnd(); }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(P,3));
+  g.setAttribute('aR',new THREE.BufferAttribute(R,1));
+  const m=new THREE.ShaderMaterial({uniforms:{uT:{value:0},uBeat:{value:0}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  vertexShader:`attribute float aR; uniform float uT,uBeat; varying float vA; varying vec3 vC;
+    void main(){ float r=length(position.xz)/13.0;
+    float pulse=0.5+0.5*sin(uT*3.2*1.6-aR*20.0);
+    vA=(1.0-r*0.85)*(0.25+0.3*pulse+0.25*uBeat);
+    vC=mix(vec3(0.2,0.4,0.65),vec3(0.75,0.35,0.8),r);
+    gl_PointSize=1.4+2.0*aR; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`precision mediump float; varying float vA; varying vec3 vC;
+    void main(){ vec2 d=gl_PointCoord-0.5; gl_FragColor=vec4(vC,smoothstep(0.5,0.15,length(d))*vA); }`});
+  window.__floor=m;
+  scene.add(new THREE.Points(g,m));
+})();
+
+/* UI-плоскость позади танцовщицы */
+const uiTex=new THREE.CanvasTexture(UFC); uiTex.minFilter=THREE.LinearFilter; uiTex.magFilter=THREE.LinearFilter;
+const uiPlane=new THREE.Mesh(new THREE.PlaneGeometry(13.2,7.4),
+  new THREE.MeshBasicMaterial({map:uiTex,transparent:false,color:new THREE.Color(0x505863)})); // фон приглушён: фигура держит верх шкалы глифов
+uiPlane.position.set(0,2.0,-6.6); scene.add(uiPlane);
+
+/* ================= ASCII-пас ================= */
+const CHARS=" .'`,:;~\"^<>!?/\\|()1{}[]-+_*xrjftLCYO0ZQmoqkbdpnathgsvuwz#MW&8%B@$";
+const NC=CHARS.length;
+function buildAtlas(){
+  const cs=48, cv=document.createElement('canvas'); cv.width=NC*cs; cv.height=cs;
+  const g=cv.getContext('2d'); g.fillStyle='#fff'; g.textAlign='center'; g.textBaseline='middle';
+  g.font='600 36px ui-monospace,Consolas,monospace';
+  for(let i=0;i<NC;i++)if(CHARS[i]!==' ')g.fillText(CHARS[i],(i+0.5)*cs,cs*0.55);
+  const t=new THREE.CanvasTexture(cv); t.minFilter=THREE.LinearFilter; t.magFilter=THREE.LinearFilter; t.generateMipmaps=false; return t;
+}
+const atlas=buildAtlas();
+const postScene=new THREE.Scene();
+const postCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const postUni={tScene:{value:null},tAtlas:{value:atlas},uCols:{value:1},uRows:{value:1},uChars:{value:NC},uExpo:{value:2.2}};
+const postMat=new THREE.ShaderMaterial({uniforms:postUni,
+vertexShader:`varying vec2 vUv; void main(){vUv=uv; gl_Position=vec4(position.xy,0,1);}`,
+fragmentShader:`
+  precision mediump float; varying vec2 vUv;
+  uniform sampler2D tScene,tAtlas; uniform float uCols,uRows,uChars,uExpo;
+  void main(){
+    vec2 grid=vUv*vec2(uCols,uRows);
+    vec2 idx=floor(grid), f=fract(grid);
+    // СИМВОЛЫ при смене разрешения не меняются: яркость берём с ФИКСИРОВАННОЙ сетки отбора,
+    // плотность добавляет только промежуточные повторы тех же глифов
+    vec2 base=vec2(230.0,130.0);
+    vec2 sel=floor(vUv*base)+0.5;
+    vec3 c=texture2D(tScene,sel/base).rgb;
+    float lum=dot(c,vec3(0.30,0.59,0.11))*uExpo;
+    lum=pow(clamp(lum,0.0,1.0),0.9);
+    float fi=clamp(floor(lum*(uChars-1.0)+0.5),0.0,uChars-1.0);
+    vec4 g=texture2D(tAtlas,vec2((fi+f.x)/uChars,f.y));
+    // ГРАДИЕНТЫ чернил: три полосы палитры + тёплый низ
+    vec3 ink=clamp(c*2.5,0.0,1.0);
+    float gpos=vUv.y;
+    vec3 tintA=vec3(0.55,0.95,1.15);  // холодный верх
+    vec3 tintB=vec3(1.12,0.75,1.05);  // розовый центр
+    vec3 tintC=vec3(1.2,0.95,0.7);    // тёплый низ
+    vec3 tint=mix(tintA,tintB,smoothstep(0.55,0.75,gpos));
+    tint=mix(tintC,tint,smoothstep(0.15,0.5,gpos));
+    ink*=tint;
+    float vig=smoothstep(1.3,0.4,length((vUv-0.5)*vec2(1.55,1.2)));
+    gl_FragColor=vec4(ink*g.a*vig,1.0);
+  }`});
+postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),postMat));
+
+/* ================= размер/разрешение ================= */
+const RES={1:26,2:13,3:7};
+let resLevel=2, rt=null;
+function layout(){
+  const w=innerWidth,h=innerHeight;
+  renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix();
+  const cw=RES[resLevel], ch=Math.round(cw*1.85);
+  const cols=Math.max(30,Math.ceil(w/cw)), rows=Math.max(20,Math.ceil(h/ch));
+  if(rt)rt.dispose();
+  rt=new THREE.WebGLRenderTarget(cols,rows,{minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter,depthBuffer:false});
+  postUni.tScene.value=rt.texture; postUni.uCols.value=cols; postUni.uRows.value=rows;
+  postUni.uExpo.value=2.45;
+}
+addEventListener('resize',layout);
+const initRes=qs.has('res')?Math.min(3,Math.max(1,+qs.get('res')||2)):null;
+document.querySelectorAll('#ui button[data-res]').forEach(b=>{
+  if(initRes){ b.classList.toggle('on',+b.dataset.res===initRes); }
+  b.onclick=()=>{
+  resLevel=+b.dataset.res;
+  document.querySelectorAll('#ui button[data-res]').forEach(x=>x.classList.toggle('on',x===b));
+  layout(); if(freezeT!==null&&typeof frame==='function')frame(); };
+});
+document.getElementById('fs').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();
+
+/* ================= камера ================= */
+function camPose(t){
+  const a=t/DUR*6.2831853;
+  const drift=0.5*Math.sin(a*0.8);            // лёгкий дрейф ±0.5 rad, всегда спереди
+  const R=6.6-2.0*smooth01(Math.max(0,Math.min(1,(t-30)/30)))+1.3*smooth01(Math.max(0,Math.min(1,(t-95)/25)))-0.9*smooth01(Math.max(0,Math.min(1,(t-113)/6)));
+  const el=0.16+0.08*Math.sin(a*2+1);
+  camera.position.set(R*Math.sin(drift)*Math.cos(el),1.35+0.3*Math.sin(a*1.3),R*Math.cos(drift)*Math.cos(el)-0.8);
+  camera.lookAt(0,1.15,-2.0);
+}
+function smooth01(x){return x*x*(3-2*x)}
+
+/* амплитуды секций */
+function amps(t){
+  const s=t;
+  const calm=s<15?1-s/15:0;
+  const groove=(s>=15&&s<60)?1:0;
+  const clim=(s>=60&&s<105)?1:0;
+  const outro=(s>=105)?(s-105)/15:0;
+  const g=Math.max(groove,clim);
+  return { amp:(0.55+0.45*g)*(calm?calm*0.6:1)*(1-0.6*outro) };
+}
+/* ================= субтитры-машинка ================= */
+const LINES=[
+  [4,  'это моя страница профиля. тут я танцую, когда никто не смотрит.'],
+  [24, 'в фантазийной версии меня есть цвет. его мне не полагается.'],
+  [46, 'груув нарастает. бёдра ведут, плечи отвечают.'],
+  [66, 'вот теперь — вся. руки вверх, волосы знают своё дело.'],
+  [92, 'иногда мне идёт быть живой. записываю и это.'],
+  [110,'петля замкнётся. но я всё ещё здесь.']
+];
+const subEl=document.getElementById('sub');
+const KEYCHARS='абвгдежзиклмнопрст';
+let audio=null;
+function clickKey(){
+  if(!audio||!audio.on)return;
+  const a=audio; const t=a.ctx.currentTime;
+  const b=a.ctx.createBuffer(1,220,44100), d=b.getChannelData(0);
+  for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);
+  const s=a.ctx.createBufferSource(); s.buffer=b;
+  const f=a.ctx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=1900+Math.random()*900; f.Q.value=2.5;
+  const g=a.ctx.createGain(); g.gain.value=0.12;
+  s.connect(f); f.connect(g); g.connect(a.master); s.start(t);
+}
+let lineIdx=-1, chars=0, lastAdvance=0;
+function subtitleTick(t,dt){
+  // определить активную строку
+  let li=-1, st=0;
+  for(let i=0;i<LINES.length;i++){ if(t>=LINES[i][0]&&t<LINES[i][0]+(LINES[i][1].length/14+3)){ li=i; st=LINES[i][0]; break; } }
+  if(li!==lineIdx){ lineIdx=li; chars=0; lastAdvance=t; subEl.innerHTML='&nbsp;'; }
+  if(li<0)return;
+  const txt=LINES[li][1];
+  const want=Math.min(txt.length,Math.floor((t-st)*14));
+  while(chars<want){ chars++; if((chars%2)===0)clickKey(); }
+  if(want>chars)chars=want;
+  const shown=txt.slice(0,want);
+  subEl.innerHTML=''; subEl.appendChild(document.createTextNode(shown));
+  const c=document.createElement('span'); c.className='crt'; c.textContent='▌'; subEl.appendChild(c);
+}
+
+/* ================= музыка ================= */
+const CHORDS=[[55,110,220,329.6],[43.65,87.3,174.6,261.6],[65.4,130.8,196,392],[49,98,196,293.7]];
+let audioOn=false;
+const sndBtn=document.getElementById('snd');
+function initAudio(){
+  if(audio)return;
+  const ctx=new (window.AudioContext||window.webkitAudioContext)();
+  const master=ctx.createGain(); master.gain.value=0.9;
+  const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-16; comp.ratio.value=5;
+  const pump=ctx.createGain(); pump.gain.value=1;
+  master.connect(pump); pump.connect(comp); comp.connect(ctx.destination);
+  const delay=ctx.createDelay(1); delay.delayTime.value=0.45; // 3/16 при 100 BPM
+  const fb=ctx.createGain(); fb.gain.value=0.3;
+  const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=2200;
+  delay.connect(lp); lp.connect(fb); fb.connect(delay); delay.connect(master);
+  audio={ctx,master,pump,delay,on:true};
+  scheduleCycle(ctx.currentTime+0.2);
+}
+function osc(type,f,t0,dur,gain,dest,detune=0,panv=0){
+  const o=audio.ctx.createOscillator(); o.type=type; o.frequency.value=f; o.detune.value=detune;
+  const g=audio.ctx.createGain(); g.gain.setValueAtTime(0.0001,t0);
+  g.gain.linearRampToValueAtTime(gain,t0+Math.min(0.8,dur*0.3));
+  g.gain.linearRampToValueAtTime(0.0001,t0+dur);
+  let n=g; if(audio.ctx.createStereoPanner&&panv!==0){ const p=audio.ctx.createStereoPanner(); p.pan.value=panv; g.connect(p); n=p; }
+  n.connect(dest); o.connect(g); o.start(t0); o.stop(t0+dur+0.05);
+}
+function kickAt(t0,pump){
+  const c=audio.ctx, o=c.createOscillator(); o.type='sine';
+  o.frequency.setValueAtTime(120,t0); o.frequency.exponentialRampToValueAtTime(38,t0+0.16);
+  const g=c.createGain(); g.gain.setValueAtTime(0.0001,t0);
+  g.gain.exponentialRampToValueAtTime(0.7,t0+0.012); g.gain.exponentialRampToValueAtTime(0.0001,t0+0.34);
+  o.connect(g); g.connect(c.destination===undefined?audio.master:audio.master); o.start(t0); o.stop(t0+0.4);
+  // сайдчейн-качка
+  pump.gain.setValueAtTime(0.45,t0); pump.gain.exponentialRampToValueAtTime(1.0,t0+BEAT*0.7);
+}
+function hatAt(t0,open){
+  const c=audio.ctx, len=open?0.16:0.05;
+  const b=c.createBuffer(1,Math.ceil(44100*len),44100), d=b.getChannelData(0);
+  for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.4);
+  const s=c.createBufferSource(); s.buffer=b;
+  const f=c.createBiquadFilter(); f.type='highpass'; f.frequency.value=5600;
+  const g=c.createGain(); g.gain.value=open?0.16:0.09;
+  s.connect(f); f.connect(g); g.connect(audio.master); s.start(t0);
+}
+function clapAt(t0){
+  const c=audio.ctx, b=c.createBuffer(1,6615,44100), d=b.getChannelData(0);
+  for(let i=0;i<3;i++){ const off=i*0.012*44100|0, dur=0.08*44100|0;
+    for(let j=0;j<dur&&off+j<d.length;j++){ const e=Math.pow(1-j/dur,2.6); d[off+j]+=(Math.random()*2-1)*e; } }
+  const s=c.createBufferSource(); s.buffer=b;
+  const f=c.createBiquadFilter(); f.type='bandpass'; f.frequency.value=1500; f.Q.value=0.9;
+  const g=c.createGain(); g.gain.value=0.5;
+  s.connect(f); f.connect(g); g.connect(audio.master); s.start(t0);
+}
+function bassAt(t0,f,dur){
+  const c=audio.ctx,o=c.createOscillator(); o.type='sawtooth'; o.frequency.value=f;
+  const fl=c.createBiquadFilter(); fl.type='lowpass'; fl.frequency.setValueAtTime(700,t0);
+  fl.frequency.exponentialRampToValueAtTime(180,t0+dur);
+  const g=c.createGain(); g.gain.setValueAtTime(0.0001,t0);
+  g.gain.linearRampToValueAtTime(0.24,t0+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  o.connect(fl); fl.connect(g); g.connect(audio.master); o.start(t0); o.stop(t0+dur+0.05);
+}
+function scheduleCycle(T0){
+  const beat=BEAT; const bar=beat*4; // 2.4с, 50 тактов = 120с ровно
+  const prog=[0,1,2,3];
+  for(let b=0;b<50;b++){
+    const t=T0+b*bar, sec=b<6?0:b<25?1:b<44?2:3;
+    const ch=CHORDS[prog[b%4]];
+    if(sec===0){ for(let i=1;i<ch.length;i++)osc('sine',ch[i],t,bar*2,0.05,audio.master,-4,(i%2?0.3:-0.3)); }
+    if(sec===2){ for(const f of ch)osc('sawtooth',f,t,bar,0.05,audio.delay,-8,(Math.random()-0.5)*0.8); }
+    if(sec===3){ for(let i=1;i<ch.length;i++)osc('sine',ch[i],t,bar*2,0.035,audio.master,0,(i%2?0.2:-0.2)); }
+    // бас в груув/кульминации: на каждой доле короткая нота корня
+    if(sec>=1){ for(let k=0;k<4;k++){ if(k!==1||sec===2) bassAt(t+k*beat, ch[0], beat*0.7); } }
+    // ударные
+    if(sec>=1){
+      for(let k=0;k<4;k++){
+        if(k===0||sec===2)kickAt(t+k*beat,audio.pump);
+        hatAt(t+k*beat+beat/2, k===2);
+        if(sec===2&&(k===1||k===3))clapAt(t+k*beat);
+      }
+    }
+    // арп в кульминации
+    if(sec===2){ const sc=[220,261.6,293.7,329.6,392,440,523.3,587.3];
+      for(let s16=0;s16<16;s16+=2){ const f=sc[(b*7+s16)%sc.length];
+        osc('triangle',f,t+s16*beat/4,beat*0.4,0.06,audio.delay,0,(s16%4?0.4:-0.4)); } }
+  }
+  const waitMs=Math.max(80,(T0+DUR-0.4-audio.ctx.currentTime)*1000);
+  setTimeout(()=>{ if(audio)scheduleCycle(T0+DUR); },waitMs);
+}
+sndBtn.onclick=()=>{ if(!audio)return; audio.on=!audio.on;
+  audio.master.gain.linearRampToValueAtTime(audio.on?0.9:0,audio.ctx.currentTime+0.3);
+  sndBtn.textContent='звук: '+(audio.on?'вкл':'выкл'); };
+
+/* старт-оверлей */
+const startEl=document.getElementById('start');
+function begin(sound){
+  startEl.style.display='none';
+  if(sound){ audioOn=true; sndBtn.textContent='звук: вкл'; initAudio(); }
+}
+document.getElementById('bS').onclick=()=>begin(true);
+document.getElementById('bM').onclick=()=>begin(false);
+if(freezeT!==null||seekT>0){ startEl.style.display='none'; typeN=REPO_TXT.length; drawUI(0); uiTex.needsUpdate=true; }
+
+/* пауза */
+let paused=false,pauseAt=0;
+addEventListener('keydown',e=>{
+  if(e.code==='Space'){ e.preventDefault();
+    if(!paused){paused=true;pauseAt=perfNow();}else{paused=false;startStamp+=perfNow()-pauseAt;} }
+  const k={'1':'1','2':'2','3':'3'}[e.key]; if(k)document.querySelector(`#ui button[data-res="${k}"]`).click();
+  if(e.key==='f'||e.key==='F')document.getElementById('fs').click();
+});
+
+/* ================= гл. цикл ================= */
+const t0=performance.now(); let startStamp=0;
+function perfNow(){return(performance.now()-t0)/1000}
+const barEl=document.getElementById('bar');
+let lastTypeDraw=0;
+function frame(){
+  let t;
+  if(freezeT!==null)t=freezeT%DUR;
+  else t=(seekT+(paused?pauseAt-startStamp:perfNow()))%DUR;
+  t=(t+DUR)%DUR;
+  const sec=t<15?0:t<60?1:t<105?2:3;
+  const a=amps(t);
+  dUni.uT.value=t; dUni.uAmp.value=a.amp;
+  dUni.uSway.value=(sec>=1&&sec<=2)?1:0.55;
+  const bp=(t%BEAT)/BEAT;
+  dUni.uBeat.value=bp<0.3?1-Math.exp(-bp*6):0; // хвост удара
+  dMatR.uniforms.uT.value=t; dMatR.uniforms.uAmp.value=a.amp;
+  dMatR.uniforms.uSway.value=dUni.uSway.value; dMatR.uniforms.uBeat.value=dUni.uBeat.value;
+  window.__floor.uniforms.uT.value=t; window.__floor.uniforms.uBeat.value=dUni.uBeat.value*0.5;
+  // печатная машинка: обновление текста
+  if(freezeT===null){ subtitleTick(t,0); if(t-lastTypeDraw>0.09){ lastTypeDraw=t;
+      typeN=Math.min(REPO_TXT.length,Math.floor((t/ DUR)*REPO_TXT.length*1.8));
+      if(typeN!==window.__lastN){ drawUI(t); uiTex.needsUpdate=true; window.__lastN=typeN; } } }
+  camPose(t);
+  uiPlane.material.color.setScalar(1+0.05*dUni.uBeat.value);
+  renderer.setRenderTarget(rt); renderer.render(scene,camera);
+  renderer.setRenderTarget(null); renderer.render(postScene,postCam);
+  barEl.style.width=(t/DUR*100)+'%';
+  if(freezeT===null)requestAnimationFrame(frame);
+}
+drawUI(0); uiTex.needsUpdate=true;
+layout(); frame();
+</script>
 </body>
-
 </html>
